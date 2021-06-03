@@ -1,0 +1,198 @@
+// GEE code for data extraction for ms Emergency policies amazon fires
+// Manoela Machado -- June 2021
+
+// CHIRPS
+// GeoRegions from IBGE
+
+///////////***********///////////***********///////////***********///////////***********///////////**********
+
+// Amazon
+var AmazonBorder = ee.FeatureCollection(AmazonBorder).filter(ee.Filter.eq('LEGEND', 'AMAZÔNIA'));
+
+var emptyAm = ee.Image().byte();
+var outlineAm = emptyAm.paint({ featureCollection: AmazonBorder, color: 1,width: 2});
+Map.centerObject(AmazonBorder, 5);
+
+
+//// Daily precipitation per Immediate region 
+
+// // The whole .shp from IBGE, it colours the municipalities (smallest polygons)
+// var RegioesBRAmaz = RegioesBR.filter(ee.Filter.bounds(AmazonBorder)); // 
+// print('RegioesBRAmaz:', RegioesBRAmaz);
+// Map.addLayer(RegioesBRAmaz, {color:'#d28ae6'}, 'RegioesBRAmaz'); // 
+
+// // Intermediate regions from IBGE 
+// var IntermRegAmaz = IntermRegBR.filter(ee.Filter.bounds(AmazonBorder)); // 
+// print('IntermRegAmaz:', IntermRegAmaz);
+// Map.addLayer(IntermRegAmaz, {color:'#6cebeb'}, 'IntermRegAmaz'); // 
+
+// Immediate regions from IBGE 
+var ImmedRegAmaz = ImmedRegBR.filter(ee.Filter.bounds(AmazonBorder)); // 
+print('ImmedRegAmaz:', ImmedRegAmaz);
+Map.addLayer(ImmedRegAmaz, {color:'#85a86c'}, 'ImmedRegAmaz'); // 
+
+// // Test with 5 days = 41 minutes {
+// var CHIRPS2019 = ee.ImageCollection(CHIRPS).filterDate('2019-01-01', '2019-01-05');
+// var Test5Days = CHIRPS2019.map(function(i){
+//   return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+// }); 
+
+// print('Test5Days:', Test5Days.first()); 
+// Test5Days = Test5Days.flatten(); // flatten multi dimensional feature collection to tabular
+// Test5Days = Test5Days.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Test5Days, 
+//   description:'Test5Days', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+
+// Year 2020: {
+var CHIRPS2020 = ee.ImageCollection(CHIRPS).filterDate('2020-12-01', '2021-01-01');
+var Year2020_mean_daily_precip_ImmedReg_Dec2020 = CHIRPS2020.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2020_mean_daily_precip_ImmedReg_Dec2020:', Year2020_mean_daily_precip_ImmedReg_Dec2020.first()); 
+Year2020_mean_daily_precip_ImmedReg_Dec2020 = Year2020_mean_daily_precip_ImmedReg_Dec2020.flatten(); // flatten multi dimensional feature collection to tabular
+Year2020_mean_daily_precip_ImmedReg_Dec2020 = Year2020_mean_daily_precip_ImmedReg_Dec2020.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+Export.table.toDrive({
+  collection: Year2020_mean_daily_precip_ImmedReg_Dec2020, 
+  description:'Year2020_mean_daily_precip_ImmedReg_Dec2020_11Jan', 
+  folder:'Stuff_from_GEE', 
+  fileFormat:'CSV'}); // }
+
+
+// Year 2019: (took 2 days!) {
+var CHIRPS2019 = ee.ImageCollection(CHIRPS).filterDate('2019-01-01', '2020-01-01');
+var Year2019_mean_daily_precip_ImmedReg = CHIRPS2019.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2019_mean_daily_precip_ImmedReg:', Year2019_mean_daily_precip_ImmedReg.first()); 
+Year2019_mean_daily_precip_ImmedReg = Year2019_mean_daily_precip_ImmedReg.flatten(); // flatten multi dimensional feature collection to tabular
+Year2019_mean_daily_precip_ImmedReg = Year2019_mean_daily_precip_ImmedReg.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Year2019_mean_daily_precip_ImmedReg, 
+//   description:'Year2019_mean_daily_precip_ImmedReg', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+
+// Year 2018: (23h) {
+var CHIRPS2018 = ee.ImageCollection(CHIRPS).filterDate('2018-01-01', '2019-01-01');
+var Year2018_mean_daily_precip_ImmedReg = CHIRPS2018.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2018_mean_daily_precip_ImmedReg:', Year2018_mean_daily_precip_ImmedReg.first()); 
+Year2018_mean_daily_precip_ImmedReg = Year2018_mean_daily_precip_ImmedReg.flatten(); // flatten multi dimensional feature collection to tabular
+Year2018_mean_daily_precip_ImmedReg = Year2018_mean_daily_precip_ImmedReg.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Year2018_mean_daily_precip_ImmedReg, 
+//   description:'Year2018_mean_daily_precip_ImmedReg', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+  
+// Year 2017: (21h) {
+var CHIRPS2017 = ee.ImageCollection(CHIRPS).filterDate('2017-01-01', '2018-01-01');
+var Year2017_mean_daily_precip_ImmedReg = CHIRPS2017.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2017_mean_daily_precip_ImmedReg:', Year2017_mean_daily_precip_ImmedReg.first()); 
+Year2017_mean_daily_precip_ImmedReg = Year2017_mean_daily_precip_ImmedReg.flatten(); // flatten multi dimensional feature collection to tabular
+Year2017_mean_daily_precip_ImmedReg = Year2017_mean_daily_precip_ImmedReg.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Year2017_mean_daily_precip_ImmedReg, 
+//   description:'Year2017_mean_daily_precip_ImmedReg', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+  
+// Year 2016: {
+var CHIRPS2016 = ee.ImageCollection(CHIRPS).filterDate('2016-01-01', '2017-01-01');
+var Year2016_mean_daily_precip_ImmedReg = CHIRPS2016.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2016_mean_daily_precip_ImmedReg:', Year2016_mean_daily_precip_ImmedReg.first()); 
+Year2016_mean_daily_precip_ImmedReg = Year2016_mean_daily_precip_ImmedReg.flatten(); // flatten multi dimensional feature collection to tabular
+Year2016_mean_daily_precip_ImmedReg = Year2016_mean_daily_precip_ImmedReg.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Year2016_mean_daily_precip_ImmedReg, 
+//   description:'Year2016_mean_daily_precip_ImmedReg', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+  
+// Year 2015: {
+var CHIRPS2015 = ee.ImageCollection(CHIRPS).filterDate('2015-01-01', '2016-01-01');
+var Year2015_mean_daily_precip_ImmedReg = CHIRPS2015.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2015_mean_daily_precip_ImmedReg:', Year2015_mean_daily_precip_ImmedReg.first()); 
+Year2015_mean_daily_precip_ImmedReg = Year2015_mean_daily_precip_ImmedReg.flatten(); // flatten multi dimensional feature collection to tabular
+Year2015_mean_daily_precip_ImmedReg = Year2015_mean_daily_precip_ImmedReg.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Year2015_mean_daily_precip_ImmedReg, 
+//   description:'Year2015_mean_daily_precip_ImmedReg', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+
+// Year 2014: {
+var CHIRPS2014 = ee.ImageCollection(CHIRPS).filterDate('2014-01-01', '2015-01-01');
+var Year2014_mean_daily_precip_ImmedReg = CHIRPS2014.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2014_mean_daily_precip_ImmedReg:', Year2014_mean_daily_precip_ImmedReg.first()); 
+Year2014_mean_daily_precip_ImmedReg = Year2014_mean_daily_precip_ImmedReg.flatten(); // flatten multi dimensional feature collection to tabular
+Year2014_mean_daily_precip_ImmedReg = Year2014_mean_daily_precip_ImmedReg.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Year2014_mean_daily_precip_ImmedReg, 
+//   description:'Year2014_mean_daily_precip_ImmedReg', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+  
+// Year 2013: {
+var CHIRPS2013 = ee.ImageCollection(CHIRPS).filterDate('2013-01-01', '2014-01-01');
+var Year2013_mean_daily_precip_ImmedReg = CHIRPS2013.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2013_mean_daily_precip_ImmedReg:', Year2013_mean_daily_precip_ImmedReg.first()); 
+Year2013_mean_daily_precip_ImmedReg = Year2013_mean_daily_precip_ImmedReg.flatten(); // flatten multi dimensional feature collection to tabular
+Year2013_mean_daily_precip_ImmedReg = Year2013_mean_daily_precip_ImmedReg.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Year2013_mean_daily_precip_ImmedReg, 
+//   description:'Year2013_mean_daily_precip_ImmedReg', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+
+// Year 2012: {
+var CHIRPS2012 = ee.ImageCollection(CHIRPS).filterDate('2012-01-01', '2013-01-01');
+var Year2012_mean_daily_precip_ImmedReg = CHIRPS2012.map(function(i){
+  return i.reduceRegions(ImmedRegAmaz,'mean',30); 
+}); 
+
+print('Year2012_mean_daily_precip_ImmedReg:', Year2012_mean_daily_precip_ImmedReg.first()); 
+Year2012_mean_daily_precip_ImmedReg = Year2012_mean_daily_precip_ImmedReg.flatten(); // flatten multi dimensional feature collection to tabular
+Year2012_mean_daily_precip_ImmedReg = Year2012_mean_daily_precip_ImmedReg.map(function(f){return f.select(['.*'],null, false)}); // set json geometry column to null, saves a lot of space
+
+// Export.table.toDrive({
+//   collection: Year2012_mean_daily_precip_ImmedReg, 
+//   description:'Year2012_mean_daily_precip_ImmedReg', 
+//   folder:'Stuff_from_GEE', 
+//   fileFormat:'CSV'}); // }
+
+
+////
+Map.addLayer(outlineAm, {color:'black'}, 'AmazonBorder');
+// }
