@@ -1,0 +1,347 @@
+// GEE code for data extraction for ms Emergency policies amazon fires
+// Manoela Machado -- June 2021
+
+
+// Assets:
+// Amazon border; source: TerraBrasilis
+// Land cover classes; source: MapBiomas collection 5
+// VIIRS2019; source: VIIRS NASA 
+// PRODES accumulated deforestation, source: INPE TerraBrasilis
+// PRODES increments deforestation, source: INPE TerraBrasilis
+// States and Municipalities; source: TerraBrasilis
+// Precipiation; source CHIRPS
+// Geopolitical regions; source: IBGE
+
+
+////////////*********////////////*********////////////*********////////////*********////////////
+
+//// 1. Transform projection {
+var MB_projection = 'EPSG:4326'; // MapBiomas. AmazonBorder will be transformed to match the raster. 
+
+// Function for transformation
+var transformer = function(a_feature) {
+  var transformed_feature = a_feature.transform(MB_projection, 0.001);
+  return transformed_feature; };
+// }
+
+//// 2. AmazonBorder { : http://terrabrasilis.dpi.inpe.br/geonetwork/srv/eng/catalog.search#/metadata/662fdeaa-d0bc-4cd0-909c-0562ce3b5389
+var AmazonBorder = ee.FeatureCollection(AmazonBorder).filter(ee.Filter.eq('LEGEND', 'AMAZÔNIA'));
+// print('AmazonBorder:', AmazonBorder);
+
+var emptyAm = ee.Image().byte();
+var outlineAm = emptyAm.paint({ featureCollection: AmazonBorder, color: 1,width: 2});
+Map.centerObject(AmazonBorder, 5);
+Map.addLayer(outlineAm, {color:'black'}, 'AmazonBorder');
+// in R: Coordinate Reference System: User input: 4674 
+
+// Transform AmazonBorder
+var AmazonBorderPROJ = AmazonBorder.map(transformer);
+// print('AmazonBorderPROJ:', AmazonBorderPROJ.first()); // 
+// }
+
+//// 3. Add fire VIIRS 375m of Jan-Dec 2019 ('VIIRS2019Amaz') {
+var VIIRS2019Amaz = VIIRS2019.filterBounds(AmazonBorderPROJ);
+print('VIIRS2019Amaz:', VIIRS2019Amaz.first());
+// Map.addLayer(VIIRS2019Amaz, {color: 'FF000088'}, 'VIIRS2019Amaz'); // }
+
+
+////// Land cover classes: {
+//// 4. MapBiomas Land Cover Classes Collection 5 {
+var LandCover50 = ee.Image('projects/mapbiomas-workspace/public/collection5/mapbiomas_collection50_integration_v1');
+// var LandCover50 = ee.Image('projects/mapbiomas-workspace/public/collection5/mapbiomas_collection50_integration_v1');
+// print('LandCover50:', LandCover50);
+
+// select 2019 and Amazon
+var LandCover2019 = LandCover50.select('classification_2019'); // 
+var LandCover2019Amaz = LandCover2019.clip(AmazonBorder);
+// print('LandCover2019Amaz:', LandCover2019Amaz);
+
+// for plotting new classes of collection 5
+var palettes = require('users/mapbiomas/modules:Palettes.js');
+var VisMapBiomas = {min: 0, max: 45, palette: palettes.get('classification5') };
+// Map.addLayer(LandCover2019Amaz, VisMapBiomas, 'LandCover2019Amaz');  // }
+
+////  5. Deforestation historic PRODES 1988-2019 { (we still miss the second half of 2019) (accumm + increments)
+
+// #1. Accumulated from 1988 to 2007 
+// in R: unique(PRODESaccum$MAINCLASS) = DESMATAMENTO
+// print('PRODESaccum:', PRODESaccum.first());  // 'ANO' = 2007 // in R: st_crs(PRODESacum) Coordinate Reference System: User input: 4674
+// Map.addLayer(PRODESaccum, {color:'grey'}, 'PRODESaccum 1988 2007');  
+// #2. PRODES yearly increments 2008 - 2019 (until 2019 and we still miss the second half of 2019)
+// print('PRODESincreAte2019:', PRODESincre.first()); // 2008 2009 2010 2011 2012 2013 2014 2015 2016 2017 2018 2019
+// Map.addLayer(PRODESincre, {color:'blue'}, 'PRODESincre Ate 2019'); // 
+// #3. Historic deforestation: from 1988 until 2019 (include 2019 to have defo of Aug-Dec 2018!)
+var HistoricDefo1988_2019 = PRODESaccum.merge(PRODESincre);
+// print('HistoricDefo1988_2019:', HistoricDefo1988_2019.first());
+// Map.addLayer(HistoricDefo1988_2019, {color:'orange'}, 'HistoricDefo1988_2019'); // 
+
+// Transform the projection of HistoricDefo
+var HistoricDefo1988_2019proj = HistoricDefo1988_2019.map(transformer);
+// print('HistoricDefo1988_2019proj:', HistoricDefo1988_2019proj.first()); // don't know how to check if the transformation worked! Bloody GEE
+// Map.addLayer(HistoricDefo1988_2019proj, {color:'orange'}, 'HistoricDefo1988_2019proj 1988 2019'); //  }
+
+////  6. Overlay HistoricDefo1988_2019proj and reclassify 'forest (classes 1,2,3)' ->  object: LandCover2019SF {
+
+// clip LandCover2019Amaz with these areas that were deforested
+var LCC2019_HistDefo = LandCover2019Amaz.clip(HistoricDefo1988_2019proj);
+// print('LCC2019_HistDefo:', LCC2019_HistDefo);
+// Map.addLayer(LCC2019_HistDefo, {palette:'lightgreen'}, 'LCC2019_HistDefo'); //  all historic defo
+ 
+// Re-classify LCC2019_HistDefo data that fell onto forest in the new image : LCC2019_HistDefo 
+var SecondaryForestsReclass = LCC2019_HistDefo.remap([1,2,3],        // Input (selected classes)
+                                                    [100,100,100],  // Output (all the same for the multiplication)
+                                                    null,           // default value
+                                                    "classification_2019"); // the band to remap, new band is called 'remapped'
+ 
+// print('SecondaryForestsReclass:', SecondaryForestsReclass);
+// Map.addLayer(SecondaryForestsReclass, {palette:['pink']}, 'SecondaryForestsReclass'); // 
+ 
+// This only keeps those places where there was forest, I need the whole footprint with all the other classes too, so
+// Transform masked values into '1':
+var SecondaryForestsReclassUnmasked = SecondaryForestsReclass.unmask(1).clip(AmazonBorder);
+// Map.addLayer(SecondaryForestsReclassUnmasked, {palette:['grey', 'red']}, 'SecondaryForestsReclassUnmasked'); // image
+
+// Update MapBiomas with Secondary Forests (reclassified once 100, 200 and 300)
+var LandCover2019SF = LandCover2019Amaz.multiply(SecondaryForestsReclassUnmasked); // merge is for collections, add or addBands nope
+// print('LandCover2019SF:', LandCover2019SF); 
+// Map.addLayer(LandCover2019SF, VisMapBiomas, 'LandCover2019SF'); // SF is pink. why? } 
+
+////  7. Get Hansen data above a canopy cover threshold of 90% { 'dense forest'
+var thresh = ee.Number(90); // 90% 
+
+var Hansen = ee.Image("UMD/hansen/global_forest_change_2019_v1_7");
+// print('Hansen projection', Hansen.projection()); // EPSG:4326 same as MB
+
+// Hansen tree cover percentage
+var HansenTreeCover = Hansen.select('treecover2000').clip(AmazonBorder);
+// Map.addLayer(HansenTreeCover.updateMask(HansenTreeCover),{palette: ['red']}, 'HansenTreeCover');
+var HansenTreeCover90 = HansenTreeCover.gt(thresh);
+// Map.addLayer(HansenTreeCover90.updateMask(HansenTreeCover90), {palette: ['green']}, 'HansenTreeCover90'); // to see better: HansenTreeCover90.updateMask(HansenTreeCover90)
+var denseForest = HansenTreeCover90.updateMask(HansenTreeCover90.eq(1)); // 'open forest' is .eq(0)
+// Map.addLayer(denseForest.updateMask(denseForest),{palette: ['blue']}, 'denseForest');
+// Hansen LossYear
+var HansenLossYearAmaz = Hansen.select(['lossyear']).clip(AmazonBorder);
+// print('HansenLossYearAmaz:', HansenLossYearAmaz);
+// Map.addLayer(HansenLossYearAmaz.updateMask(HansenLossYearAmaz),{palette: ['orange']}, 'HansenLossYearAmaz'); // all forest loss
+// }
+
+/// 8. Create class of Forest loss Hansen 2018 ('forest loss in 2018') {
+var HansenLossYearAmaz2018 = ee.Image(1).mask(HansenLossYearAmaz.select('lossyear').eq(18));  // 2018
+// Map.addLayer(HansenLossYearAmaz2018.updateMask(HansenLossYearAmaz2018),{palette: ['yellow']}, 'HansenLossYearAmaz2018'); // all cover loss in 2018
+var HansenLossYearAmaz2018_90 = denseForest.updateMask(HansenLossYearAmaz2018.eq(1));
+// print('HansenLossYearAmaz2018_90:', HansenLossYearAmaz2018_90);
+// Map.addLayer(HansenLossYearAmaz2018_90,{palette: ['red']}, 'HansenLossYearAmaz2018_90'); // only cover above 90% loss in 2018
+
+// Forest loss in 2018 has the value of 1, to Re-classify to 1000 
+var HansenLossYearAmaz2018_90Reclass = HansenLossYearAmaz2018_90.remap([1],     // Input (selected classes)
+                                                                      [1000],   // Output (all the same for the multiplication)
+                                                                      null,     // default value
+                                                                      "treecover2000"); // the band to remap, old is called 'constant', new is 'remapped'
+
+// print('HansenLossYearAmaz2018_90Reclass:', HansenLossYearAmaz2018_90Reclass);
+// Map.addLayer(HansenLossYearAmaz2018_90Reclass, {palette:['black']}, 'HansenLossYearAmaz2018_90Reclass'); 
+// This only keeps those places where there was forest loss 2018 90%, I need the whole footprint with all the other classes too, so
+// Transform masked values into '1':
+var HansenLossYearAmaz2018_90ReclassUnmasked = HansenLossYearAmaz2018_90Reclass.unmask(1).clip(AmazonBorder);
+// Map.addLayer(HansenLossYearAmaz2018_90ReclassUnmasked, {palette:['grey', 'red']}, 'HansenLossYearAmaz2018_90ReclassUnmasked'); // image
+
+// Update LandCover2019SF with Forest Loss in 2018
+var LandCover2019SF_Defo2018 = LandCover2019SF.multiply(HansenLossYearAmaz2018_90ReclassUnmasked); // 
+// print('LandCover2019SF_Defo2018:', LandCover2019SF_Defo2018); // deforestation are MB class (and SF 100, 200 and 300) * 1000 (ex. 15000)
+// Map.addLayer(LandCover2019SF_Defo2018, VisMapBiomas, 'LandCover2019SF_Defo2018');
+
+// reclassify all classes, forest loss in 2018 will be names 2018 (to organise the names!)
+var LandCover2019SF_Defo2018Reclass = LandCover2019SF_Defo2018
+.remap([1,2,3,4,5,9,10,11,12,32,29,13,14,15,18,19,39,20,41,36,21,22,23,24,30,25,26,33,31,27,
+100,200,300,
+1000,2000,3000,4000,5000,9000,10000,11000,12000,32000,29000,13000,14000,15000,18000,19000,39000,20000,41000,36000,21000,22000,23000,24000,30000,25000,26000,33000,31000,27000,
+100000,200000,300000],     // Input (selected classes)
+      [1,2,3,4,5,9,10,11,12,32,29,13,14,15,18,19,39,20,41,36,21,22,23,24,30,25,26,33,31,27,
+100,200,300,
+2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,2018,
+2018,2018,2018],   // Output (all the same for the multiplication)
+null,     // default value
+"classification_2019"); // 
+
+print('LandCover2019SF_Defo2018Reclass:', LandCover2019SF_Defo2018Reclass); // 
+// Map.addLayer(LandCover2019SF_Defo2018Reclass, VisMapBiomas, 'LandCover2019SF_Defo2018Reclass'); // band 'remapped' }
+
+///  9. Create class of Forest loss Hansen 2019 ('forest loss in 2019') {
+var HansenLossYearAmaz2019 = ee.Image(1).mask(HansenLossYearAmaz.select('lossyear').eq(19));  // 2019
+// Map.addLayer(HansenLossYearAmaz2019.updateMask(HansenLossYearAmaz2019),{palette: ['yellow']}, 'HansenLossYearAmaz2019'); // all cover loss in 2019
+var HansenLossYearAmaz2019_90 = denseForest.updateMask(HansenLossYearAmaz2019.eq(1));
+// print('HansenLossYearAmaz2019_90:', HansenLossYearAmaz2019_90);
+// Map.addLayer(HansenLossYearAmaz2019_90, {palette: ['#80e37b']}, 'HansenLossYearAmaz2019_90'); // only cover above 90% loss in 2019, light green
+
+// Forest loss in 2019 has the value of 1, to Re-classify to 10 000 
+var HansenLossYearAmaz2019_90Reclass = HansenLossYearAmaz2019_90.remap([1],     // Input (selected classes)
+                                                                      [10000],  // Output (all the same for the multiplication)
+                                                                      null,     // default value
+                                                                      "treecover2000"); // the band to remap, old is called 'constant', new is 'remapped'
+
+// print('HansenLossYearAmaz2019_90Reclass:', HansenLossYearAmaz2019_90Reclass);
+// Map.addLayer(HansenLossYearAmaz2019_90Reclass, {palette:['brown']}, 'HansenLossYearAmaz2019_90Reclass'); 
+// This only keeps those places where there was forest, I need the whole footprint with all the other classes too, so
+// Transform masked values into '1':
+var HansenLossYearAmaz2019_90ReclassUnmasked = HansenLossYearAmaz2019_90Reclass.unmask(1).clip(AmazonBorder);
+// Map.addLayer(HansenLossYearAmaz2019_90ReclassUnmasked, {palette:['grey', 'red']}, 'HansenLossYearAmaz2019_90ReclassUnmasked'); // image
+
+// Update LandCover2019SF_Defo2018Reclass with Forest Loss in 2019
+var LandCover2019SF_Defo2018ReclassDefo2019 = LandCover2019SF_Defo2018Reclass.multiply(HansenLossYearAmaz2019_90ReclassUnmasked); // 
+// print('LandCover2019SF_Defo2018ReclassDefo2019:', LandCover2019SF_Defo2018ReclassDefo2019); 
+// deforestation 2019 is: MB class and SF 100, 200 and 300, and 2018 * 10 000
+// Map.addLayer(LandCover2019SF_Defo2018ReclassDefo2019, VisMapBiomas, 'LandCover2019SF_Defo2018ReclassDefo2019');
+
+// reclassify all classes, forest loss in 2018 is already 2018, now all classes that are *10 000 will be called 2019
+var LandCover2019SF_Defo2018ReclassDefo2019Reclass = LandCover2019SF_Defo2018ReclassDefo2019
+.remap([1,2,3,4,5,9,10,11,12,32,29,13,14,15,18,19,39,20,41,36,21,22,23,24,30,25,26,33,31,27,
+100,200,300,2018,
+10000,20000,30000,40000,50000,90000,100000,110000,120000,320000,290000,130000,140000,150000,180000,190000,390000,200000,410000,360000,210000,
+220000,230000,240000,300000,250000,260000,330000,310000,270000,
+1000000,2000000,3000000,20180000],     // Input (selected classes)
+      [1,2,3,4,5,9,10,11,12,32,29,13,14,15,18,19,39,20,41,36,21,22,23,24,30,25,26,33,31,27,
+100,200,300,2018,
+2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,2019,
+2019,2019,2019,2019],   // Output (all the same for the multiplication)
+null,     // default value
+"remapped"); // the band to remap
+
+print('LandCover2019SF_Defo2018ReclassDefo2019Reclass:', LandCover2019SF_Defo2018ReclassDefo2019Reclass); // 
+Map.addLayer(LandCover2019SF_Defo2018ReclassDefo2019Reclass, VisMapBiomas, 'LandCover2019SF_Defo2018ReclassDefo2019Reclass'); // } 
+// } 
+
+
+// 10. Get land cover class value from 'Year2019_LCC_Defo2019' for each fire occurrence point (VIIRS2019Amaz) {
+  // Outup object: 'VIIRS_Year2019_LCC_Defo2019' csv and shp
+
+// Fire is a Feature Collection
+// Year2019_LCC_Defo2019 is an Image
+// How to get LandClass of each Fire occurrence point: (https://gis.stackexchange.com/questions/265392/extracting-pixel-values-by-points-and-converting-to-table-in-google-earth-engine)
+
+// Map.addLayer(VIIRS2019Amaz, {color: 'FF000088'}, 'VIIRS2019Amaz');  
+
+//// ** Test with Acre {
+var Acre = ee.FeatureCollection(States).filter(ee.Filter.eq('NM_ESTADO', 'ACRE'));
+// subset LandCover Acre
+var Year2019_LCC_Defo2019_Acre = Year2019_LCC_Defo2019.clip(Acre);
+Map.addLayer(Year2019_LCC_Defo2019_Acre,  VisMapBiomas, 'Year2019_LCC_Defo2019_Acre'); //
+// subset VIIRS Acre
+var VIIRS2019AmazAcre = VIIRS2019Amaz.filterBounds(Acre.geometry());
+Map.addLayer(VIIRS2019AmazAcre,  {color:'blue'}, 'VIIRS2019AmazAcre');
+//
+var VIIRS2019AmazAcre_Year2019_LCC_Defo2019_Acre = Year2019_LCC_Defo2019_Acre.reduceRegions(VIIRS2019AmazAcre, ee.Reducer.first(),30);
+print('VIIRS2019AmazAcre_Year2019_LCC_Defo2019_Acre:', VIIRS2019AmazAcre_Year2019_LCC_Defo2019_Acre.first());
+Map.addLayer(VIIRS2019AmazAcre_Year2019_LCC_Defo2019_Acre,  {color:'black'}, 'VIIRS2019AmazAcre_Year2019_LCC_Defo2019_Acre'); //
+
+// Export.table.toDrive(VIIRS2019AmazAcre_Year2019_LCC_Defo2019_Acre,
+//   'VIIRS2019AmazAcre_Year2019_LCC_Defo20182019_Acre_24_July',
+//   'TEST_GEE'); // yep, seems to be working fine =D //  }
+
+//// Whole Amazon {
+var VIIRS_Year2019_LCC_Defo2019 = Year2019_LCC_Defo2019.reduceRegions(VIIRS2019Amaz, ee.Reducer.first(),30);
+print('VIIRS_Year2019_LCC_Defo2019:', VIIRS_Year2019_LCC_Defo2019.first());
+// Map.addLayer(VIIRS_Year2019_LCC_Defo2019,  {color:'black'}, 'VIIRS_Year2019_LCC_Defo2019'); // 
+
+// // Export {
+// Export.table.toDrive({
+//   collection : VIIRS_Year2019_LCC_Defo2019,
+//   description : 'VIIRS_Year2019_LCC_Defo2019_17Sep',
+//   folder : 'TEST_GEE', 
+//   fileFormat : 'CSV'}); // 
+
+// Export.table.toDrive({
+//   collection : VIIRS_Year2019_LCC_Defo2019,
+//   description : 'VIIRS_Year2019_LCC_Defo2019_17Sep',
+//   folder : 'TEST_GEE', 
+//   fileFormat : 'SHP'}); // } // }
+// // } // }
+
+
+//// 13. Add states +
+//// 14. Add municipalities {
+  //Output: 'VIIRS2019Amaz_States_Municipalities' 
+
+// Add as attributes: states (names) 
+// properties to add from States: 'NM_ESTADO' // from Municipalities: 'nm_municip'e 'uf'
+// https://gis.stackexchange.com/questions/316544/spatial-join-between-two-featurecollections-in-earth-engine
+
+// States: {
+var VIIRS2019Amaz_States = States.map(function(feat){
+  feat = ee.Feature(feat);
+  var name = feat.get('NM_ESTADO');
+  var zonesFilt = VIIRS2019Amaz.filterBounds(feat.geometry()).map(function(VIIRS2019Amaz){
+    return ee.Feature(VIIRS2019Amaz).set('NM_ESTADO', name);
+  });
+  return zonesFilt;
+}).flatten();
+
+print('VIIRS2019Amaz_States:', VIIRS2019Amaz_States.first());
+// Map.addLayer(VIIRS2019Amaz_States, {colour: 'black'}, 'VIIRS2019Amaz_States'); // }
+
+// Municipalities: {
+var VIIRS2019Amaz_States_Municipalities = Municipalities.map(function(feat){
+  feat = ee.Feature(feat);
+  var name = feat.get('nm_municip');
+  var zonesFilt = VIIRS2019Amaz_States.filterBounds(feat.geometry()).map(function(VIIRS2019Amaz_States){
+    return ee.Feature(VIIRS2019Amaz_States).set('nm_municip', name);
+  });
+  return zonesFilt;
+}).flatten(); // }
+
+print('VIIRS2019Amaz_States_Municipalities:', VIIRS2019Amaz_States_Municipalities.first());
+// Map.addLayer(VIIRS2019Amaz_States_Municipalities, {colour: 'black'}, 'VIIRS2019Amaz_States_Municipalities');
+
+// // Export: {
+// Export.table.toDrive(VIIRS2019Amaz_States_Municipalities,
+//   'VIIRS2019Amaz_States_Municipalities_07Sep',
+//   'TEST_GEE'); // csv faster to check
+
+// Export.table.toDrive({
+//   collection : VIIRS2019Amaz_States_Municipalities,
+//   description : 'VIIRS2019Amaz_States_Municipalities_07Sep',
+//   folder : 'TEST_GEE', 
+//   fileFormat : 'SHP'}); // }
+// // } end State Municip 
+
+  
+// 17. MesoRegions + Immediate regions {
+  //Output: 'VIIRS2019Amaz_Regions' 
+  // Map.addLayer(VIIRS2019Amaz, {color: 'FF000088'}, 'VIIRS2019Amaz');  
+
+// whole collection of regions from IBGE: 'RegioesBR'
+// FeatureCollection RegioesBR, vars 'cod_rgint' and 'nome_rgint' relate to meso regions, now called intermediate
+print('RegioesBR:',RegioesBR.first());
+// Map.addLayer(RegioesBR, {color:'#8ccf9d'}, 'RegioesBR'); // 
+
+// cut Amazon (not really needed as VIIRS2019Amaz is already bounds in the Amazon)
+var RegAmaz = RegioesBR.filter(ee.Filter.bounds(AmazonBorder)); // 
+print('RegAmaz:', RegAmaz);
+Map.addLayer(RegAmaz, {color:'#eda8dd'}, 'RegAmaz'); // 
+
+// get name of mesoregion for each active fire this year
+var VIIRS2019Amaz_Regions = RegAmaz.map(function(feat){
+  feat = ee.Feature(feat);
+  var regInt = feat.get('nome_rgint');
+  var regImmed = feat.get('nome_rgi');
+  var zonesFilt = VIIRS2019Amaz.filterBounds(feat.geometry()).map(function(VIIRS2019Amaz){
+    return ee.Feature(VIIRS2019Amaz)
+    .set('nome_rgint', regInt)
+    .set('nome_rgi', regImmed);
+  });
+  return zonesFilt;
+}).flatten(); // 
+
+
+print('VIIRS2019Amaz_Regions:', VIIRS2019Amaz_Regions.first());
+
+// Export {
+Export.table.toDrive({
+  collection: VIIRS2019Amaz_Regions,
+  description:'VIIRS2019Amaz_Regions_12Nov',
+  folder: 'TEST_GEE'}); // csv faster to check
+
+Export.table.toDrive({
+  collection : VIIRS2019Amaz_Regions,
+  description : 'VIIRS2019Amaz_Regions_12Nov',
+  folder : 'TEST_GEE', 
+  fileFormat : 'SHP'}); // } // } 
